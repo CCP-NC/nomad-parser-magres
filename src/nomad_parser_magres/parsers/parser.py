@@ -1,54 +1,40 @@
-#
-# Copyright The NOMAD Authors.
-#
-# This file is part of NOMAD.
-# See https://nomad-lab.eu for further info.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-import os
-import numpy as np
 import logging
+import os
 
-from nomad.units import ureg
-from nomad.parsing.file_parser import TextParser, Quantity
-from runschema.run import Run, Program
-from runschema.method import (
-    Functional,
-    Method,
-    DFT,
-    XCFunctional,
-    BasisSetContainer,
-    BasisSet,
-    KMesh,
-)
-from runschema.system import System, Atoms
-from runschema.calculation import (
-    Calculation,
-    MagneticSusceptibility,
-    MagneticShielding,
-    ElectricFieldGradient,
-    SpinSpinCoupling,
-)
-from nomad_parser_magres.schema import m_package
+import numpy as np
+from nomad.app.v1.models import MetadataRequired
+from nomad.config import config
+from nomad.parsing.file_parser import Quantity, TextParser
 
 # For the automatic workflow NMR
 from nomad.search import search
-from nomad.app.v1.models import MetadataRequired
+from nomad.units import ureg
+from runschema.calculation import (
+    Calculation,
+    ElectricFieldGradient,
+    MagneticShielding,
+    MagneticSusceptibility,
+    SpinSpinCoupling,
+)
+from runschema.method import (
+    DFT,
+    BasisSet,
+    BasisSetContainer,
+    Functional,
+    KMesh,
+    Method,
+    XCFunctional,
+)
+from runschema.run import Program, Run
+from runschema.system import Atoms, System
+
 from .utils import BeyondDFTWorkflowsParser
 
-
 re_float = r' *[-+]?\d+\.\d*(?:[Ee][-+]\d+)? *'
+
+configuration = config.get_plugin_entry_point(
+    'nomad_parser_wannier90.parsers:nomad_parser_wannier90_plugin'
+)
 
 
 class MagresFileParser(TextParser):
@@ -73,7 +59,7 @@ class MagresFileParser(TextParser):
                 'isc_orbital_d_units', r'units *isc_orbital_d *([a-zA-Z\^\d\.\-]+)'
             ),
             Quantity('sus_units', r'units *sus *([a-zA-Z\^\d\.\-]+)'),
-            Quantity('cutoffenergy_units', rf'units *calc\_cutoffenergy *([a-zA-Z]+)'),
+            Quantity('cutoffenergy_units', r'units *calc\_cutoffenergy *([a-zA-Z]+)'),
             Quantity(
                 'calculation',
                 r'([\[\<]*calculation[\>\]]*[\s\S]+?)(?:[\[\<]*\/calculation[\>\]]*)',
@@ -232,8 +218,8 @@ class MagresParser(BeyondDFTWorkflowsParser):
             data = self.magres_file_parser.get(f'{key}_units', '')
             if data and data != value:
                 self.logger.warning(
-                    f'The units of the NMR quantities are not parsed if they are not magres standard. '
-                    f'We will use the default units.',
+                    'The units of the NMR quantities are not parsed if they are not magres standard. '
+                    'We will use the default units.',
                     data={
                         'quantities': key,
                         'standard_units': value,

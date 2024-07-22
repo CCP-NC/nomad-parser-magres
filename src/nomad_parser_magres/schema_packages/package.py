@@ -1,43 +1,40 @@
-#
-# Copyright The NOMAD Authors.
-#
-# This file is part of NOMAD.
-# See https://nomad-lab.eu for further info.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-import numpy as np  # pylint: disable=unused-import
-import typing  # pylint: disable=unused-import
+from typing import TYPE_CHECKING
+
+import numpy as np
+
+if TYPE_CHECKING:
+    from nomad.datamodel.datamodel import EntryArchive
+    from structlog.stdlib import BoundLogger
+
+from nomad.config import config
 from nomad.metainfo import (  # pylint: disable=unused-import
-    MSection,
-    MCategory,
     Category,
+    MCategory,
+    MSection,
     Package,
     Quantity,
-    Section,
-    SubSection,
-    SectionProxy,
     Reference,
+    SchemaPackage,
+    Section,
+    SectionProxy,
+    SubSection,
 )
-
+from nomad_simulations.schema_packages.general import Simulation
+from runschema.calculation import (
+    ElectricFieldGradient as BaseElectricFieldGradient,
+)
 from runschema.calculation import (
     MagneticShielding as BaseMagneticShielding,
-    ElectricFieldGradient as BaseElectricFieldGradient,
+)
+from runschema.calculation import (
     SpinSpinCoupling as BaseSpinSpinCoupling,
 )
 
+configuration = config.get_plugin_entry_point(
+    'nomad_parser_magres.schema_packages:nomad_parser_magres_schema'
+)
 
-m_package = Package()
+m_package = SchemaPackage()
 
 
 class MagneticShielding(BaseMagneticShielding):
