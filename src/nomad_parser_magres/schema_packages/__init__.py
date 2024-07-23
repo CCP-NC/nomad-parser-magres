@@ -13,5 +13,5 @@ class MagresSchemaPackageEntryPoint(SchemaPackageEntryPoint):
 
 nomad_parser_magres_schema = MagresSchemaPackageEntryPoint(
     name='MagresSchemaPackageEntryPoint',
-    description='Entry point for the Magres code-specific schema.',
+    description='Entry point for the magres code-specific schema.',
 )
