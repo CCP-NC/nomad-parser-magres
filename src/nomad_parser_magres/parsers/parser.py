@@ -384,15 +384,15 @@ class MagresParser(MatchingParser):
         self, magres_data: TextParser, cell: 'Cell', logger: 'BoundLogger'
     ) -> list[MagneticShieldingTensor]:
         """
-        Parse
+        Parse the magnetic shieldings from the magres file and assign `entity_ref` to the specific `AtomsState`.
 
         Args:
-            magres_data (TextParser): _description_
-            cell (Cell): _description_
-            logger (BoundLogger): _description_
+            magres_data (TextParser): The parsed [magres][/magres] block.
+            cell (Cell): The parsed `Cell` section.
+            logger (BoundLogger): The logger to log messages.
 
         Returns:
-            list[MagneticShieldingTensor]: _description_
+            list[MagneticShieldingTensor]: The list of parsed `MagneticShieldingTensor` sections.
         """
         n_atoms = len(cell.atoms_state)
         data = magres_data.get('ms', [])
@@ -416,6 +416,17 @@ class MagresParser(MatchingParser):
     def parse_electric_field_gradients(
         self, magres_data: TextParser, cell: 'Cell', logger: 'BoundLogger'
     ) -> list[ElectricFieldGradient]:
+        """
+        Parse the electric field gradients from the magres file and assign `entity_ref` to the specific `AtomsState`.
+
+        Args:
+            magres_data (TextParser): The parsed [magres][/magres] block.
+            cell (Cell): The parsed `Cell` section.
+            logger (BoundLogger): The logger to log messages.
+
+        Returns:
+            list[ElectricFieldGradient]: The list of parsed `ElectricFieldGradient` sections.
+        """
         n_atoms = len(cell.atoms_state)
         efg_contributions = {
             'efg_local': 'local',
@@ -446,6 +457,18 @@ class MagresParser(MatchingParser):
     def parse_spin_spin_couplings(
         self, magres_data: TextParser, cell: 'Cell', logger: 'BoundLogger'
     ) -> list[SpinSpinCoupling]:
+        """
+        Parse the spin-spin couplings from the magres file and assign `entity_ref_1` and `entity_ref_2`
+        to the specific `AtomsState`.
+
+        Args:
+            magres_data (TextParser): The parsed [magres][/magres] block.
+            cell (Cell): The parsed `Cell` section.
+            logger (BoundLogger): The logger to log messages.
+
+        Returns:
+            list[SpinSpinCoupling]: The list of parsed `SpinSpinCoupling` sections.
+        """
         n_atoms = len(cell.atoms_state)
         isc_contributions = {
             'isc_fc': 'fermi_contact',
@@ -483,6 +506,16 @@ class MagresParser(MatchingParser):
     def parse_magnetic_susceptibilities(
         self, magres_data: TextParser, logger: 'BoundLogger'
     ) -> list[MagneticSusceptibility]:
+        """
+        Parse the magnetic susceptibilities from the magres file.
+
+        Args:
+            magres_data (TextParser): The parsed [magres][/magres] block.
+            logger (BoundLogger): The logger to log messages.
+
+        Returns:
+            list[MagneticSusceptibility]: The list of parsed `MagneticSusceptibility` sections.
+        """
         data = magres_data.get('sus', [])
         if np.size(data) != 9:
             logger.warning(
@@ -497,6 +530,18 @@ class MagresParser(MatchingParser):
     def parse_outputs(
         self, simulation: Simulation, logger: 'BoundLogger'
     ) -> Optional[Outputs]:
+        """
+        Parse the `Outputs` section. It extracts the information of the [magres][/magres] block and passes
+        it as input for parsing the corresponding properties. It also assigns references to the `ModelMethod` and `ModelSystem`
+        sections used for the simulation.
+
+        Args:
+            simulation (Simulation): The `Simulation` section used to resolve the references.
+            logger (BoundLogger): The logger to log messages.
+
+        Returns:
+            Optional[Outputs]: The parsed `Outputs` section.
+        """
         # Initial check on `Simulation.model_system` and store the number of `AtomsState` in the
         # cell for checks of the output properties blocks
         if simulation.model_system is None:
