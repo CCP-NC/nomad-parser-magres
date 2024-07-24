@@ -10,7 +10,6 @@ if TYPE_CHECKING:
 
 from nomad.config import config
 from nomad.parsing.file_parser import Quantity, TextParser
-from nomad.parsing.parser import MatchingParser
 from nomad.units import ureg
 from nomad_simulations.schema_packages.atoms_state import AtomsState
 from nomad_simulations.schema_packages.general import Program, Simulation
@@ -172,7 +171,7 @@ class MagresFileParser(TextParser):
         ]
 
 
-class MagresParser(MatchingParser):
+class MagresParser:
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.magres_file_parser = MagresFileParser()
@@ -600,15 +599,11 @@ class MagresParser(MatchingParser):
         return outputs
 
     def parse(
-        self,
-        mainfile: str,
-        archive: 'EntryArchive',
-        logger: 'BoundLogger',
-        child_archives: dict[str, 'EntryArchive'] = None,
+        self, filepath: str, archive: 'EntryArchive', logger: 'BoundLogger'
     ) -> None:
-        self.mainfile = mainfile
-        self.maindir = os.path.dirname(mainfile)
-        self.basename = os.path.basename(mainfile)
+        self.mainfile = filepath
+        self.maindir = os.path.dirname(self.mainfile)
+        self.basename = os.path.basename(self.mainfile)
         self.archive = archive
 
         self.init_parser(logger=logger)
