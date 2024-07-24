@@ -51,7 +51,7 @@ def resolve_name_from_entity_ref(entities: list[Entity], logger: 'BoundLogger') 
             )
             return ''
 
-        index = ''  # ! implement here
+        index = ''  # ! implement here if needed
         name += f'{atoms_state.chemical_symbol}{index}'
     return name
 
@@ -332,7 +332,8 @@ class SpinSpinCoupling(PhysicalProperty):
             entities=[self.entity_ref_1, self.entity_ref_2], logger=logger
         )
 
-        # TODO add normalization to extract `reduced_value`
+        # TODO add normalization to extract `value` from `reduced_value`
+        # TODO add normalization to extract `reduced_value` from `value`
 
 
 class MagneticSusceptibility(PhysicalProperty):
