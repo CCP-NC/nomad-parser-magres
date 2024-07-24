@@ -1,39 +1,43 @@
-import logging
 import os
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
-from nomad.app.v1.models import MetadataRequired
+
+if TYPE_CHECKING:
+    from nomad.datamodel.datamodel import EntryArchive
+    from nomad_simulations.schema_packages.model_system import Cell
+    from structlog.stdlib import BoundLogger
+
 from nomad.config import config
 from nomad.parsing.file_parser import Quantity, TextParser
-
-# For the automatic workflow NMR
-from nomad.search import search
+from nomad.parsing.parser import MatchingParser
 from nomad.units import ureg
-from runschema.calculation import (
-    Calculation,
-    ElectricFieldGradient,
-    MagneticShielding,
-    MagneticSusceptibility,
-    SpinSpinCoupling,
-)
-from runschema.method import (
+from nomad_simulations.schema_packages.atoms_state import AtomsState
+from nomad_simulations.schema_packages.general import Program, Simulation
+from nomad_simulations.schema_packages.model_method import (
     DFT,
-    BasisSet,
-    BasisSetContainer,
-    Functional,
-    KMesh,
-    Method,
+    ModelMethod,
     XCFunctional,
 )
-from runschema.run import Program, Run
-from runschema.system import Atoms, System
+from nomad_simulations.schema_packages.model_system import AtomicCell, ModelSystem
+from nomad_simulations.schema_packages.numerical_settings import KMesh, KSpace
 
-from .utils import BeyondDFTWorkflowsParser
+from nomad_parser_magres.schema_packages.package import (
+    ElectricFieldGradient,
+    MagneticShieldingTensor,
+    MagneticSusceptibility,
+    Outputs,
+    SpinSpinCoupling,
+)
+
+# from nomad.app.v1.models import MetadataRequired
+# from nomad.search import search
+# from .utils import BeyondDFTWorkflowsParser
 
 re_float = r' *[-+]?\d+\.\d*(?:[Ee][-+]\d+)? *'
 
 configuration = config.get_plugin_entry_point(
-    'nomad_parser_wannier90.parsers:nomad_parser_wannier90_plugin'
+    'nomad_parser_magres.parsers:nomad_parser_magres_plugin'
 )
 
 
@@ -168,10 +172,9 @@ class MagresFileParser(TextParser):
         ]
 
 
-class MagresParser(BeyondDFTWorkflowsParser):
-    level = 1
-
-    def __init__(self):
+class MagresParser(MatchingParser):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
         self.magres_file_parser = MagresFileParser()
 
         self._xc_functional_map = {
@@ -191,11 +194,7 @@ class MagresParser(BeyondDFTWorkflowsParser):
             'RSCAN': ['MGGA_X_RSCAN', 'MGGA_C_RSCAN'],
         }
 
-    def init_parser(self):
-        self.magres_file_parser.mainfile = self.filepath
-        self.magres_file_parser.logger = self.logger
-
-    def _check_units_magres(self):
+    def _check_units_magres(self, logger: 'BoundLogger') -> None:
         """
         Check if the units of the NMR quantities are magres standard. If not, a warning
         is issued and the default units are used.
@@ -227,164 +226,227 @@ class MagresParser(BeyondDFTWorkflowsParser):
                     },
                 )
 
-    def parse_system(self, sec_run: Run):
+    def init_parser(self, logger: 'BoundLogger') -> None:
+        self.magres_file_parser.mainfile = self.mainfile
+        self.magres_file_parser.logger = logger
+
+    def parse_atomic_cell(
+        self, atoms: Optional[TextParser], logger: 'BoundLogger'
+    ) -> Optional[AtomicCell]:
         """
-        Parse the System section by extracting information about the atomic structure:
-        lattice vectors, periodic boundary conditions, atom positions and labels from the
-        magres file.
+        Parse the `AtomicCell` section from the magres file.
 
         Args:
-            sec_run (Run): the section Run where System will be added.
-        """
-        sec_atoms = Atoms()
+            atoms (Optional[TextParser]): The parsed text section [atoms][/atoms] of the magres file.
+            logger (BoundLogger): The logger to log messages.
 
+        Returns:
+            Optional[AtomicCell]: The parsed `AtomicCell` section.
+        """
+        # Check if [atoms][/atoms] was correctly parsed
+        if not atoms:
+            logger.warning('Could not find atomic structure in magres file.')
+            return None
+        atomic_cell = AtomicCell()
+
+        # Parse `lattice_vectors` and `periodic_boundary_conditions`
+        try:
+            lattice_vectors = np.reshape(np.array(atoms.get('lattice', [])), (3, 3))
+            atomic_cell.lattice_vectors = lattice_vectors * ureg.angstrom
+            pbc = (
+                [True, True, True]
+                if lattice_vectors is not None
+                else [False, False, False]
+            )
+            atomic_cell.periodic = pbc
+        except Exception:
+            logger.warning(
+                'Could not parse `lattice_vectors` and `periodic_boundary_conditions`.'
+            )
+            return None
+
+        # Parse `positions` and `AtomsState` list
+        atoms_list = atoms.get('atom', [])
+        if len(atoms_list) == 0:
+            logger.warning(
+                'Could not find atom `positions` and their chemical symbols in magres file.'
+            )
+            return None
+        positions = []
+        atoms_states = []
+        for atom in atoms_list:
+            atoms_states.append(AtomsState(chemical_symbol=atom[0]))
+            positions.append(atom[2:])
+        atomic_cell.positions = positions * ureg.angstrom
+        atomic_cell.atoms_state = atoms_states
+        return atomic_cell
+
+    def parse_model_system(self, logger: 'BoundLogger') -> Optional[ModelSystem]:
+        """
+        Parse the `ModelSystem` section from the magres file if the [atoms][/atoms] section
+        in the magres file was correctly matched.
+
+        Args:
+            logger (BoundLogger): The logger to log messages.
+
+        Returns:
+            Optional[ModelSystem]: The parsed `ModelSystem` section.
+        """
         # Check if [atoms][/atoms] was correctly parsed
         atoms = self.magres_file_parser.get('atoms')
         if not atoms:
-            self.logger.warning('Could not find atomic structure in magres file.')
-            return
+            logger.warning('Could not find atomic structure in magres file.')
+            return None
 
-        # Store lattice_vectors and periodic boundary conditions
-        lattice_vectors = np.reshape(np.array(atoms.get('lattice', [])), (3, 3))
-        sec_atoms.lattice_vectors = lattice_vectors * ureg.angstrom
-        pbc = (
-            [True, True, True] if lattice_vectors is not None else [False, False, False]
-        )
-        sec_atoms.periodic = pbc
+        # Parse `ModelSystem` and its `cell`
+        model_system = ModelSystem()
+        model_system.is_representative = True
+        atomic_cell = self.parse_atomic_cell(atoms=atoms, logger=logger)
+        model_system.cell.append(atomic_cell)
+        return model_system
 
-        # Storing atom positions and labels
-        atoms_list = atoms.get('atom', [])
-        if len(atoms_list) == 0:
-            self.logger.warning(
-                'Could not find atom positions and labels in magres file.'
-            )
-            return
-        atom_labels = []
-        atom_positions = []
-        for atom in atoms_list:
-            atom_labels.append(atom[0])
-            atom_positions.append(atom[2:])
-        sec_atoms.labels = atom_labels
-        sec_atoms.positions = atom_positions * ureg.angstrom
-
-        # Add Atoms to System and this to Run
-        sec_system = System()
-        sec_system.atoms = sec_atoms
-        sec_run.system.append(sec_system)
-
-    def parse_method(self, calculation_params: TextParser, sec_run: Run):
+    def parse_xc_functional(
+        self, calculation_params: Optional[TextParser]
+    ) -> list[XCFunctional]:
         """
-        Parse the Method section by extracting information about the NMR method:basis set,
+        Parse the exchange-correlation functional information from the magres file. This
+        uses the `libxc` naming convention.
+
+        Args:
+            calculation_params (Optional[TextParser]): The parsed [calculation][/calculation] block parameters.
+
+        Returns:
+            list[XCFunctional]: The parsed `XCFunctional` sections.
+        """
+        xc_functional = calculation_params.get('xcfunctional', 'LDA')
+        xc_functional_labels = self._xc_functional_map.get(xc_functional, [])
+        xc_sections = []
+        for xc in xc_functional_labels:
+            functional = XCFunctional(libxc_name=xc)
+            if '_X_' in xc:
+                functional.name = 'exchange'
+            elif '_C_' in xc:
+                functional.name = 'correlation'
+            elif 'HYB' in xc:
+                functional.name = 'hybrid'
+            else:
+                functional.name = 'contribution'
+            xc_sections.append(functional)
+        return xc_sections
+
+    def parse_model_method(
+        self, calculation_params: Optional[TextParser]
+    ) -> ModelMethod:
+        """
+        Parse the `ModelMethod` section by extracting information about the NMR method: basis set,
         exchange-correlation functional, cutoff energy, and K mesh.
 
         Note: only CASTEP-like method parameters are currently being supported.
 
         Args:
-            calculation_params (TextParser): the parsed [calculation][/calculation] block parameters.
-            sec_run (Run): the section Run where Method will be added.
+            calculation_params (Optional[TextParser]): The parsed [calculation][/calculation] block parameters.
+
+        Returns:
+            Optional[ModelMethod]: The parsed `ModelMethod` section.
         """
-        sec_method = Method(label='NMR')
+        model_method = DFT(name='NMR')
 
-        # XC functional parsing
-        sec_dft = DFT()
-        xc_functional = calculation_params.get('xcfunctional', 'LDA')
-        xc_functional_labels = self._xc_functional_map.get(xc_functional)
-        if xc_functional_labels:
-            sec_xc_functional = XCFunctional()
-            for functional in xc_functional_labels:
-                sec_functional = Functional(name=functional)
-                if '_X_' in functional or functional.endswith('_X'):
-                    sec_xc_functional.exchange.append(sec_functional)
-                elif '_C_' in functional or functional.endswith('_C'):
-                    sec_xc_functional.correlation.append(sec_functional)
-                elif 'HYB' in functional:
-                    sec_xc_functional.hybrid.append(sec_functional)
-                else:
-                    sec_xc_functional.contributions.append(sec_functional)
-            sec_dft.xc_functional = sec_xc_functional
-            sec_method.dft = sec_dft
+        # Parse `XCFunctinals` information
+        xc_functionals = self.parse_xc_functional(calculation_params=calculation_params)
+        if len(xc_functionals) > 0:
+            model_method.xc_functionals = xc_functionals
 
-        # Basis set parsing (adding cutoff energies units check)
-        cutoff = calculation_params.get('cutoffenergy')
-        if cutoff.dimensionless:
-            cutoff_units = self.magres_file_parser.get('cutoffenergy_units', 'eV')
-            if cutoff_units == 'Hartree':
-                cutoff_units = 'hartree'
-            cutoff = cutoff.magnitude * ureg(cutoff_units)
-        sec_basis_set = BasisSetContainer(
-            type='plane waves',
-            scope=['wavefunction'],
-            basis_set=[BasisSet(scope=['valence'], type='plane waves', cutoff=cutoff)],
-        )
-        sec_method.electrons_representation.append(sec_basis_set)
+        # TODO add when @ndaelman-hu finishes implementation of `BasisSet`
+        # # Basis set parsing (adding cutoff energies units check)
+        # cutoff = calculation_params.get('cutoffenergy')
+        # if cutoff.dimensionless:
+        #     cutoff_units = self.magres_file_parser.get('cutoffenergy_units', 'eV')
+        #     if cutoff_units == 'Hartree':
+        #         cutoff_units = 'hartree'
+        #     cutoff = cutoff.magnitude * ureg(cutoff_units)
+        # sec_basis_set = BasisSetContainer(
+        #     type='plane waves',
+        #     scope=['wavefunction'],
+        #     basis_set=[BasisSet(scope=['valence'], type='plane waves', cutoff=cutoff)],
+        # )
+        # sec_method.electrons_representation.append(sec_basis_set)
 
-        # KMesh parsing
-        sec_k_mesh = KMesh(
+        # Parse `KSpace` as a `NumericalSettings` section
+        k_mesh = KMesh(
             grid=calculation_params.get('kpoint_mp_grid', [1, 1, 1]),
             offset=calculation_params.get('kpoint_mp_offset', [0, 0, 0]),
         )
-        sec_method.k_mesh = sec_k_mesh
+        model_method.numerical_settings.append(KSpace(k_mesh=[k_mesh]))
 
-        # Add Method to Run
-        sec_run.method.append(sec_method)
+        return model_method
 
-    def parse_calculation(self, sec_run: Run):
+    def parse_magnetic_shieldings(
+        self, magres_data: TextParser, cell: 'Cell', logger: 'BoundLogger'
+    ) -> list[MagneticShieldingTensor]:
         """
-        Parse the Calculation section by extracting information about the magnetic outputs
-        in the magres file: magnetic shielding tensor, electric field gradient, indirect
-        spin-spin coupling, and magnetic susceptibility. It also stores references to the
-        System and Method sections.
+        Parse
 
         Args:
-            sec_run (Run): the section Run where System will be added.
+            magres_data (TextParser): _description_
+            cell (Cell): _description_
+            logger (BoundLogger): _description_
+
+        Returns:
+            list[MagneticShieldingTensor]: _description_
         """
-        # Check if [magres][/magres] was correctly parsed
-        magres_data = self.magres_file_parser.get('magres')
-        if not magres_data:
-            self.logger.warning('Could not find [magres] data block in magres file.')
-            return
-
-        # Creating Calculation and adding System and Method refs
-        sec_scc = Calculation()
-        sec_scc.system_ref = sec_run.system[-1]
-        sec_scc.method_ref = sec_run.method[-1]
-        atom_labels = sec_scc.system_ref.atoms.labels
-        if not atom_labels:
-            self.logger.warning('Could not find the parsed atomic cell information.')
-            return
-        n_atoms = len(atom_labels)
-
-        # Magnetic Shielding Tensor (ms) parsing
+        n_atoms = len(cell.atoms_state)
         data = magres_data.get('ms', [])
-        if np.size(data) == n_atoms * (9 + 2):  # 2 extra columns with atom labels
-            values = np.reshape([d[2:] for d in data], (n_atoms, 3, 3))
-            values = np.transpose(values, axes=(0, 2, 1))
-            isotropic_value = np.trace(values, axis1=1, axis2=2) / 3.0
-            atoms = np.array([d[:2] for d in data])
-            sec_ms = MagneticShielding(atoms=atoms)
-            sec_ms.value = values * 1e-6 * ureg('dimensionless')
-            sec_ms.isotropic_value = isotropic_value * 1e-6 * ureg('dimensionless')
-            sec_scc.magnetic_shielding.append(sec_ms)
 
-        # Electric Field Gradient (efg) parsing
+        # Initial check on the size of the matched text
+        if np.size(data) != n_atoms * (9 + 2):  # 2 extra columns with atom labels
+            logger.warning(
+                'The shape of the matched text from the magres file for the `ms` does not coincide with the number of atoms.'
+            )
+            return []
+
+        # Parse magnetic shieldings and their refs to the specific `AtomsState`
+        magnetic_shieldings = []
+        for i, atom_data in enumerate(data):
+            values = np.transpose(np.reshape(atom_data[2:], (3, 3)))
+            sec_ms = MagneticShieldingTensor(entity_ref=cell.atoms_state[i])
+            sec_ms.value = values * 1e-6 * ureg('dimensionless')
+            magnetic_shieldings.append(sec_ms)
+        return magnetic_shieldings
+
+    def parse_electric_field_gradients(
+        self, magres_data: TextParser, cell: 'Cell', logger: 'BoundLogger'
+    ) -> list[ElectricFieldGradient]:
+        n_atoms = len(cell.atoms_state)
         efg_contributions = {
             'efg_local': 'local',
             'efg_nonlocal': 'non_local',
             'efg': 'total',
         }
+        electric_field_gradients = []
         for tag, contribution in efg_contributions.items():
             data = magres_data.get(tag, [])
-            if np.size(data) != n_atoms * (9 + 2):  # 2 extra columns with atom labels
-                continue
-            values = np.reshape([d[2:] for d in data], (n_atoms, 3, 3))
-            values = np.transpose(values, axes=(0, 2, 1))
-            atoms = np.array([d[:2] for d in data])
-            sec_efg = ElectricFieldGradient(atoms=atoms)
-            sec_efg.contribution = contribution
-            sec_efg.value = values * 9.717362e21 * ureg('V/m^2')
-            sec_scc.electric_field_gradient.append(sec_efg)
 
-        # Indirect Spin-Spin Coupling (isc) parsing
+            # Initial check on the size of the matched text
+            if np.size(data) != n_atoms * (9 + 2):  # 2 extra columns with atom labels
+                logger.warning(
+                    'The shape of the matched text from the magres file for the `efg` does not coincide with the number of atoms.'
+                )
+                return []
+
+            # Parse electronic field gradients for each contribution and their refs to the specific `AtomsState`
+            for i, atom_data in enumerate(data):
+                values = np.transpose(np.reshape(atom_data[2:], (3, 3)))
+                sec_efg = ElectricFieldGradient(
+                    type=contribution, entity_ref=cell.atoms_state[i]
+                )
+                sec_efg.value = values * 9.717362e21 * ureg('V/m^2')
+                electric_field_gradients.append(sec_efg)
+        return electric_field_gradients
+
+    def parse_spin_spin_couplings(
+        self, magres_data: TextParser, cell: 'Cell', logger: 'BoundLogger'
+    ) -> list[SpinSpinCoupling]:
+        n_atoms = len(cell.atoms_state)
         isc_contributions = {
             'isc_fc': 'fermi_contact',
             'isc_orbital_p': 'orbital_paramagnetic',
@@ -392,99 +454,180 @@ class MagresParser(BeyondDFTWorkflowsParser):
             'isc_spin': 'spin_dipolar',
             'isc': 'total',
         }
+        spin_spin_couplings = []
         for tag, contribution in isc_contributions.items():
-            # TODO the data is organized differently to the NOMAD metainfo, we need to transform it properly
             data = magres_data.get(tag, [])
+
+            # Initial check on the size of the matched text
             if np.size(data) != n_atoms**2 * (
                 9 + 4
             ):  # 4 extra columns with atom labels
-                continue
-            values = np.reshape([d[4:] for d in data], (n_atoms, n_atoms, 3, 3))
-            values = np.transpose(values, axes=(0, 1, 3, 2))
-            atoms = np.array([d[:4] for d in data])
-            atoms_1 = atoms[:, 0:2]
-            atoms_2 = atoms[:, 2:4]
-            sec_isc = SpinSpinCoupling(atoms_1=atoms_1, atoms_2=atoms_2)
-            sec_isc.contribution = contribution
-            sec_isc.reduced_value = values * 1e19 * ureg('K^2/J')
-            sec_scc.spin_spin_coupling.append(sec_isc)
+                logger.warning(
+                    'The shape of the matched text from the magres file for the `isc` does not coincide with the number of atoms.'
+                )
+                return []
 
-        # Magnetic Susceptibility (sus) parsing
+            # Parse spin-spin couplings for each contribution and their refs to the specific `AtomsState`
+            for i, coupled_atom_data in enumerate(data):
+                for j, atom_data in enumerate(coupled_atom_data):
+                    values = np.transpose(np.reshape(atom_data[4:], (3, 3)))
+                    sec_isc = SpinSpinCoupling(
+                        type=contribution,
+                        entity_ref_1=cell.atoms_state[i],
+                        entity_ref_2=cell.atoms_state[j],
+                    )
+                    sec_isc.reduced_value = values * 1e19 * ureg('K^2/J')
+                    spin_spin_couplings.append(sec_isc)
+        return spin_spin_couplings
+
+    def parse_magnetic_susceptibilities(
+        self, magres_data: TextParser, logger: 'BoundLogger'
+    ) -> list[MagneticSusceptibility]:
         data = magres_data.get('sus', [])
-        if np.size(data) == 9:
-            values = np.transpose(np.reshape(data, (3, 3)))
-            sec_sus = MagneticSusceptibility()
-            sec_sus.scale_dimension = 'macroscopic'
-            sec_sus.value = values * 1e-6 * ureg('dimensionless')
-            sec_scc.magnetic_susceptibility.append(sec_sus)
+        if np.size(data) != 9:
+            logger.warning(
+                'The shape of the matched text from the magres file for the `sus` does not coincide with 9 (3x3 tensor).'
+            )
+            return []
+        values = np.transpose(np.reshape(data, (3, 3)))
+        sec_sus = MagneticSusceptibility(scale_dimension='macroscopic')
+        sec_sus.value = values * 1e-6 * ureg('dimensionless')
+        return [sec_sus]
 
-        # Add Calculation to Run
-        sec_run.calculation.append(sec_scc)
+    def parse_outputs(
+        self, simulation: Simulation, logger: 'BoundLogger'
+    ) -> Optional[Outputs]:
+        # Initial check on `Simulation.model_system` and store the number of `AtomsState` in the
+        # cell for checks of the output properties blocks
+        if simulation.model_system is None:
+            logger.warning(
+                'Could not find the `ModelSystem` that the outputs reference to.'
+            )
+            return None
+        outputs = Outputs(
+            model_method_ref=simulation.model_method[-1],
+            model_system_ref=simulation.model_system[-1],
+        )
+        if (
+            not simulation.model_system[-1].cell
+            or not simulation.model_system[-1].cell[-1].atoms_state
+        ):
+            logger.warning(
+                'Could not find the `cell` sub-section or the `AtomsState` list under it.'
+            )
+            return None
+        cell = simulation.model_system[-1].cell[-1]
 
-    def parse(self, filepath, archive, logger):
-        self.filepath = os.path.abspath(filepath)
+        # Check if [magres][/magres] was correctly parsed
+        magres_data = self.magres_file_parser.get('magres')
+        if not magres_data:
+            logger.warning('Could not find [magres] data block in magres file.')
+            return None
+
+        # Parse `MagneticShieldingTensor`
+        ms = self.parse_magnetic_shieldings(
+            magres_data=magres_data, cell=cell, logger=logger
+        )
+        if len(ms) > 0:
+            outputs.magnetic_shieldings = ms
+
+        # Parse `ElectricFieldGradient`
+        efg = self.parse_electric_field_gradients(
+            magres_data=magres_data, cell=cell, logger=logger
+        )
+        if len(efg) > 0:
+            outputs.electric_field_gradients.append(efg)
+
+        # Parse `SpinSpinCoupling`
+        isc = self.parse_spin_spin_couplings(
+            magres_data=magres_data, cell=cell, logger=logger
+        )
+        if len(isc) > 0:
+            outputs.spin_spin_couplings.append(isc)
+
+        # Parse `MagneticSusceptibility`
+        mag_sus = self.parse_magnetic_susceptibilities(
+            magres_data=magres_data, logger=logger
+        )
+        if len(mag_sus) > 0:
+            outputs.magnetic_susceptibilities.append(mag_sus)
+
+        return outputs
+
+    def parse(
+        self,
+        mainfile: str,
+        archive: 'EntryArchive',
+        logger: 'BoundLogger',
+        child_archives: dict[str, 'EntryArchive'] = None,
+    ) -> None:
+        self.mainfile = mainfile
+        self.maindir = os.path.dirname(mainfile)
+        self.basename = os.path.basename(mainfile)
         self.archive = archive
-        self.logger = logger if logger is not None else logging.getLogger(__name__)
 
-        self.init_parser()
-        self._check_units_magres()
+        self.init_parser(logger=logger)
+        self._check_units_magres(logger=logger)
 
-        # Create Run with Program information
-        sec_run = Run()
+        # Adding Simulation to data
+        simulation = Simulation()
         calculation_params = self.magres_file_parser.get('calculation', {})
-        program_name = calculation_params.get('code', '')
-        if program_name != 'CASTEP':
-            self.logger.error(
-                'Only CASTEP-based NMR simulations are supported by the '
-                'magres parser.'
+        if calculation_params.get('code', '') != 'CASTEP':
+            logger.error(
+                'Only CASTEP-based NMR simulations are supported by the magres parser.'
             )
             return
-        sec_run.program = Program(
-            name=program_name,
+        simulation.program = Program(
+            name=calculation_params.get('code', ''),
             version=calculation_params.get('code_version', ''),
         )
+        archive.data = simulation
 
-        # Parse main sections under Run
-        self.parse_system(sec_run)
+        # `ModelSystem` parsing
+        model_system = self.parse_model_system(logger=logger)
+        if model_system is not None:
+            simulation.model_system.append(model_system)
 
-        self.parse_method(calculation_params, sec_run)
+        # `ModelMethod` parsing
+        model_method = self.parse_model_method(calculation_params=calculation_params)
+        simulation.model_method.append(model_method)
 
-        self.parse_calculation(sec_run)
+        # `Outputs` parsing
+        outputs = self.parse_outputs(simulation=simulation, logger=logger)
+        if outputs is not None:
+            simulation.outputs.append(outputs)
 
-        # Add run to the Archive
-        self.archive.run.append(sec_run)
-
-        # We try to resolve the entry_id and mainfile of other entries in the upload
-        filepath_stripped = self.filepath.split('raw/')[-1]
-        metadata = []
-        try:
-            upload_id = self.archive.metadata.upload_id
-            search_ids = search(
-                owner='visible',
-                user_id=self.archive.metadata.main_author.user_id,
-                query={'upload_id': upload_id},
-                required=MetadataRequired(include=['entry_id', 'mainfile']),
-            ).data
-            metadata = [[sid['entry_id'], sid['mainfile']] for sid in search_ids]
-        except Exception:
-            self.logger.warning(
-                'Could not resolve the entry_id and mainfile of other entries in the upload.'
-            )
-            return
-        for entry_id, mainfile in metadata:
-            if mainfile == filepath_stripped:  # we skip the current parsed mainfile
-                continue
-            # We try to load the archive from its context and connect both the CASTEP
-            # and the magres entries
-            try:
-                entry_archive = archive.m_context.load_archive(
-                    entry_id, upload_id, None
-                )
-                method_label = entry_archive.run[-1].method[-1].label
-                if method_label == 'NMR':
-                    castep_archive = entry_archive
-                    # We write the workflow NMRMagRes directly in the magres entry
-                    self.parse_nmr_magres_file_format(castep_archive)
-                    break
-            except Exception:
-                continue
+        # # We try to resolve the entry_id and mainfile of other entries in the upload
+        # filepath_stripped = self.filepath.split('raw/')[-1]
+        # metadata = []
+        # try:
+        #     upload_id = self.archive.metadata.upload_id
+        #     search_ids = search(
+        #         owner='visible',
+        #         user_id=self.archive.metadata.main_author.user_id,
+        #         query={'upload_id': upload_id},
+        #         required=MetadataRequired(include=['entry_id', 'mainfile']),
+        #     ).data
+        #     metadata = [[sid['entry_id'], sid['mainfile']] for sid in search_ids]
+        # except Exception:
+        #     self.logger.warning(
+        #         'Could not resolve the entry_id and mainfile of other entries in the upload.'
+        #     )
+        #     return
+        # for entry_id, mainfile in metadata:
+        #     if mainfile == filepath_stripped:  # we skip the current parsed mainfile
+        #         continue
+        #     # We try to load the archive from its context and connect both the CASTEP
+        #     # and the magres entries
+        #     try:
+        #         entry_archive = archive.m_context.load_archive(
+        #             entry_id, upload_id, None
+        #         )
+        #         method_label = entry_archive.run[-1].method[-1].label
+        #         if method_label == 'NMR':
+        #             castep_archive = entry_archive
+        #             # We write the workflow NMRMagRes directly in the magres entry
+        #             self.parse_nmr_magres_file_format(castep_archive)
+        #             break
+        #     except Exception:
+        #         continue

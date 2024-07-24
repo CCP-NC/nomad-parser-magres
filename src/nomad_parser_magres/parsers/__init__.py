@@ -16,5 +16,5 @@ nomad_parser_magres_plugin = MagresParserEntryPoint(
     description='Entry point for the magres parser.',
     level=1,
     mainfile_contents_re=r'\$magres-abinitio-v(\d\.)+',
-    mainfile_name_re='^.*magres',
+    # mainfile_name_re='^.*magres',
 )
