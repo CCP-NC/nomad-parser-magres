@@ -257,7 +257,7 @@ class MagresParser:
                 if lattice_vectors is not None
                 else [False, False, False]
             )
-            atomic_cell.periodic = pbc
+            atomic_cell.periodic_boundary_conditions = pbc
         except Exception:
             logger.warning(
                 'Could not parse `lattice_vectors` and `periodic_boundary_conditions`.'
