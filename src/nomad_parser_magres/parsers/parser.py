@@ -215,7 +215,7 @@ class MagresParser:
         for key, value in allowed_units.items():
             data = self.magres_file_parser.get(f'{key}_units', '')
             if data and data != value:
-                self.logger.warning(
+                logger.warning(
                     'The units of the NMR quantities are not parsed if they are not magres standard. '
                     'We will use the default units.',
                     data={
