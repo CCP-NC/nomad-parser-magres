@@ -231,6 +231,12 @@ class MagresParser:
                 )
 
     def init_parser(self, logger: 'BoundLogger') -> None:
+        """
+        Initialize the `MagresFileParser` with the mainfile and logger.
+
+        Args:
+            logger (BoundLogger): The logger to log messages.
+        """
         self.magres_file_parser.mainfile = self.mainfile
         self.magres_file_parser.logger = logger
 
