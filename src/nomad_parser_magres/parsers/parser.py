@@ -8,9 +8,13 @@ if TYPE_CHECKING:
     from nomad_simulations.schema_packages.model_system import Cell
     from structlog.stdlib import BoundLogger
 
+from nomad.app.v1.models import MetadataRequired
 from nomad.config import config
+from nomad.datamodel.metainfo.workflow import Link, TaskReference
 from nomad.parsing.file_parser import Quantity, TextParser
+from nomad.search import search
 from nomad.units import ureg
+from nomad.utils import extract_section
 from nomad_simulations.schema_packages.atoms_state import AtomsState
 from nomad_simulations.schema_packages.general import Program, Simulation
 from nomad_simulations.schema_packages.model_method import (
@@ -28,10 +32,11 @@ from nomad_parser_magres.schema_packages.package import (
     Outputs,
     SpinSpinCoupling,
 )
-
-# from nomad.app.v1.models import MetadataRequired
-# from nomad.search import search
-# from .utils import BeyondDFTWorkflowsParser
+from nomad_parser_magres.schema_packages.workflow import (
+    NMRMagRes,
+    NMRMagResMethod,
+    NMRMagResResults,
+)
 
 re_float = r' *[-+]?\d+\.\d*(?:[Ee][-+]\d+)? *'
 
@@ -580,23 +585,76 @@ class MagresParser:
             magres_data=magres_data, cell=cell, logger=logger
         )
         if len(efg) > 0:
-            outputs.electric_field_gradients.append(efg)
+            outputs.electric_field_gradients = efg
 
         # Parse `SpinSpinCoupling`
         isc = self.parse_spin_spin_couplings(
             magres_data=magres_data, cell=cell, logger=logger
         )
         if len(isc) > 0:
-            outputs.spin_spin_couplings.append(isc)
+            outputs.spin_spin_couplings = isc
 
         # Parse `MagneticSusceptibility`
         mag_sus = self.parse_magnetic_susceptibilities(
             magres_data=magres_data, logger=logger
         )
         if len(mag_sus) > 0:
-            outputs.magnetic_susceptibilities.append(mag_sus)
+            outputs.magnetic_susceptibilities = mag_sus
 
         return outputs
+
+    def parse_nmr_magres_file_format(
+        self, nmr_first_principles_archive: 'EntryArchive'
+    ):
+        """
+        Automatically parses the NMR Magres workflow. Here, `self.archive` is the
+        NMR magres archive in which we will link the original NMR first principles (CASTEP
+        or QuantumESPRESSO) entry.
+
+        Args:
+            nmr_first_principles_archive (EntryArchive): the NMR (first principles) CASTEP or QuantumESPRESSO archive.
+        """
+        workflow = NMRMagRes(method=NMRMagResMethod(), results=NMRMagResResults())
+        workflow.name = 'NMR Magres'
+
+        # ! Fix this once CASTEP and QuantumESPRESSO use the new `nomad-simulations` schema under 'data'
+        # Method
+        # method_nmr = extract_section(nmr_first_principles_archive, ['run', 'method'])
+        # workflow.method.nmr_method_ref = method_nmr
+
+        # Inputs and Outputs
+        # ! Fix this to extract `input_structure` from `nmr_first_principles_archive` once
+        # ! CASTEP and QuantumESPRESSO use the new `nomad-simulations` schema under 'data'
+        input_structure = extract_section(self.archive, ['data', 'model_system'])
+        nmr_magres_calculation = extract_section(self.archive, ['data', 'outputs'])
+        if input_structure:
+            workflow.m_add_sub_section(
+                NMRMagRes.inputs, Link(name='Input structure', section=input_structure)
+            )
+        if nmr_magres_calculation:
+            workflow.m_add_sub_section(
+                NMRMagRes.outputs,
+                Link(name='Output NMR calculation', section=nmr_magres_calculation),
+            )
+
+        # NMR (first principles) task
+        # ! Fix this once CASTEP and QuantumESPRESSO use the new `nomad-simulations` schema under 'data'
+        program_name = nmr_first_principles_archive.run[-1].program.name
+        if nmr_first_principles_archive.workflow2:
+            task = TaskReference(task=nmr_first_principles_archive.workflow2)
+            task.name = f'NMR FirstPrinciples {program_name}'
+            if input_structure:
+                task.inputs = [Link(name='Input structure', section=input_structure)]
+            if nmr_magres_calculation:
+                task.outputs = [
+                    Link(
+                        name='Output NMR calculation',
+                        section=nmr_magres_calculation,
+                    )
+                ]
+            workflow.m_add_sub_section(NMRMagRes.tasks, task)
+
+        self.archive.workflow2 = workflow
 
     def parse(
         self, filepath: str, archive: 'EntryArchive', logger: 'BoundLogger'
@@ -637,37 +695,40 @@ class MagresParser:
         if outputs is not None:
             simulation.outputs.append(outputs)
 
-        # # We try to resolve the entry_id and mainfile of other entries in the upload
-        # filepath_stripped = self.filepath.split('raw/')[-1]
-        # metadata = []
-        # try:
-        #     upload_id = self.archive.metadata.upload_id
-        #     search_ids = search(
-        #         owner='visible',
-        #         user_id=self.archive.metadata.main_author.user_id,
-        #         query={'upload_id': upload_id},
-        #         required=MetadataRequired(include=['entry_id', 'mainfile']),
-        #     ).data
-        #     metadata = [[sid['entry_id'], sid['mainfile']] for sid in search_ids]
-        # except Exception:
-        #     self.logger.warning(
-        #         'Could not resolve the entry_id and mainfile of other entries in the upload.'
-        #     )
-        #     return
-        # for entry_id, mainfile in metadata:
-        #     if mainfile == filepath_stripped:  # we skip the current parsed mainfile
-        #         continue
-        #     # We try to load the archive from its context and connect both the CASTEP
-        #     # and the magres entries
-        #     try:
-        #         entry_archive = archive.m_context.load_archive(
-        #             entry_id, upload_id, None
-        #         )
-        #         method_label = entry_archive.run[-1].method[-1].label
-        #         if method_label == 'NMR':
-        #             castep_archive = entry_archive
-        #             # We write the workflow NMRMagRes directly in the magres entry
-        #             self.parse_nmr_magres_file_format(castep_archive)
-        #             break
-        #     except Exception:
-        #         continue
+        # Try to resolve the `entry_id` and `mainfile` of other entries in the upload to connect the magres entry with the CASTEP or QuantumESPRESSO entry
+        filepath_stripped = self.mainfile.split('raw/')[-1]
+        metadata = []
+        try:
+            upload_id = self.archive.metadata.upload_id
+            search_ids = search(
+                owner='visible',
+                user_id=self.archive.metadata.main_author.user_id,
+                query={'upload_id': upload_id},
+                required=MetadataRequired(include=['entry_id', 'mainfile']),
+            ).data
+            metadata = [[sid['entry_id'], sid['mainfile']] for sid in search_ids]
+        except Exception:
+            logger.warning(
+                'Could not resolve the entry_id and mainfile of other entries in the upload.'
+            )
+            return
+        for entry_id, mainfile in metadata:
+            if mainfile == filepath_stripped:  # we skip the current parsed mainfile
+                continue
+            # We try to load the archive from its context and connect both the CASTEP and the magres entries
+            # ? add more checks on the system information for the connection?
+            try:
+                entry_archive = self.archive.m_context.load_archive(
+                    entry_id, upload_id, None
+                )
+                # ! Fix this when CASTEP parser uses the new `data` schema
+                method_label = entry_archive.run[-1].method[-1].label
+                if method_label == 'NMR':
+                    castep_archive = entry_archive
+                    # We write the workflow NMRMagRes directly in the magres entry
+                    self.parse_nmr_magres_file_format(
+                        nmr_first_principles_archive=castep_archive
+                    )
+                    break
+            except Exception:
+                continue

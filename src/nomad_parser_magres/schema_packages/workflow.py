@@ -1,5 +1,5 @@
-from nomad.datamodel.metainfo.simulation.method import Method
 from nomad.metainfo import Quantity, Reference, SubSection
+from nomad_simulations.schema_packages.model_method import ModelMethod
 from simulationworkflowschema import (
     SerialSimulation,
     SimulationWorkflowMethod,
@@ -21,7 +21,7 @@ class NMRMagResMethod(SimulationWorkflowMethod):
     """
 
     nmr_method_ref = Quantity(
-        type=Reference(Method),
+        type=Reference(ModelMethod),
         description="""
         Reference to the NMR (first principles) methodology.
         """,

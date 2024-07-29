@@ -39,7 +39,8 @@ dev = [
     "pytest",
     "pytest-timeout",
     "pytest-cov",
-    "structlog"
+    "structlog",
+    "nomad-lab[infrastructure]",  # for search and MetadataRequired to work
 ]
 
 [tool.ruff]
