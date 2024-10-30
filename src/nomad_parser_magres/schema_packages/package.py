@@ -7,12 +7,20 @@ if TYPE_CHECKING:
     from nomad.metainfo import Context, Section
     from structlog.stdlib import BoundLogger
 
+from nomad.datamodel.data import EntryData
 from nomad.config import config
 from nomad.datamodel.metainfo.basesections import Entity
 from nomad.metainfo import MEnum, Quantity, SchemaPackage, Section, SubSection
 from nomad_simulations.schema_packages.atoms_state import AtomsState
 from nomad_simulations.schema_packages.outputs import Outputs as BaseOutputs
 from nomad_simulations.schema_packages.physical_property import PhysicalProperty
+
+# Import the CCPNCMetadata section
+from .ccpnc_metadata import CCPNCMetadata
+
+# Define the CCPNCEntryData class
+class CCPNCEntryData(EntryData):
+    ccpnc_metadata = SubSection(section_def=CCPNCMetadata)
 
 configuration = config.get_plugin_entry_point(
     'nomad_parser_magres.schema_packages:nomad_parser_magres_schema'
