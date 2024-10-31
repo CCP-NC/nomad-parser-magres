@@ -3,6 +3,7 @@ import os
 import numpy as np
 import pytest
 from nomad.datamodel import EntryArchive
+
 from nomad_parser_magres.parsers.parser import MagresParser
 
 from . import logger
