@@ -11,11 +11,11 @@ pip install nomad-parser-magres --index-url https://gitlab.mpcdf.mpg.de/api/v4/p
 
 ## Development
 
-If you want to develop locally this package, clone the project and in the workspace folder, create a virtual environment (note this project uses Python 3.9):
+If you want to develop locally this package, clone the project and in the workspace folder, create a virtual environment (this project uses Python 3.9 or 3.10):
 ```sh
 git clone https://github.com/CCP-NC/nomad-parser-magres.git
 cd nomad-parser-magres
-python3.9 -m venv .pyenv
+python3.10 -m venv .pyenv
 . .pyenv/bin/activate
 ```
 

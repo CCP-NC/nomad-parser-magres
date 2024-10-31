@@ -7,20 +7,16 @@ if TYPE_CHECKING:
     from nomad.metainfo import Context, Section
     from structlog.stdlib import BoundLogger
 
-from nomad.datamodel.data import EntryData
 from nomad.config import config
 from nomad.datamodel.metainfo.basesections import Entity
 from nomad.metainfo import MEnum, Quantity, SchemaPackage, Section, SubSection
 from nomad_simulations.schema_packages.atoms_state import AtomsState
+from nomad_simulations.schema_packages.general import Simulation
 from nomad_simulations.schema_packages.outputs import Outputs as BaseOutputs
 from nomad_simulations.schema_packages.physical_property import PhysicalProperty
 
-# Import the CCPNCMetadata section
-from .ccpnc_metadata import CCPNCMetadata
-
-# Define the CCPNCEntryData class
-class CCPNCEntryData(EntryData):
-    ccpnc_metadata = SubSection(section_def=CCPNCMetadata)
+# Import the CCPNCMetadata section (always use absolute paths for imports)
+from nomad_parser_magres.schema_packages.ccpnc_metadata import CCPNCMetadata
 
 configuration = config.get_plugin_entry_point(
     'nomad_parser_magres.schema_packages:nomad_parser_magres_schema'
@@ -396,6 +392,11 @@ class Outputs(BaseOutputs):
     magnetic_susceptibilities = SubSection(
         sub_section=MagneticSusceptibility.m_def, repeats=True
     )
+
+
+# Define the CCPNCSimulation class holding CCP-NC specific metadata
+class CCPNCSimulation(Simulation):
+    ccpnc_metadata = SubSection(section_def=CCPNCMetadata)
 
 
 m_package.__init_metainfo__()
