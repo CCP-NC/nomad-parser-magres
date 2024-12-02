@@ -57,6 +57,13 @@ class MaterialProperties(ArchiveSection):
         """,
     )
 
+    test_metadata_field = Quantity(
+        type=str,
+        description="""
+        Test metadata field. Quantity to be removed in the future.
+        """,
+    )
+
 
 class ORCID(ArchiveSection):
     orcid_id = Quantity(
