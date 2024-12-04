@@ -15,7 +15,7 @@ class MaterialProperties(ArchiveSection):
 
     chemical_name_tokens = Quantity(
         type=str,
-        shape=['*'],
+        shape=["*"],
         description="""
         Free-text chemical name, but tokenised to take individual words in the name to assist in wildcard searches.
         """,
@@ -24,7 +24,7 @@ class MaterialProperties(ArchiveSection):
     formula = Quantity(
         # type=[(str, int)],  # better to use JSON type
         type=JSON,
-        shape=['*'],
+        shape=["*"],
         description="""
         Dictionary containing the species (chemical symbol of an element in the material) as keys and
         number of atoms of that element in the material as their value.
@@ -33,7 +33,7 @@ class MaterialProperties(ArchiveSection):
 
     stoichiometry = Quantity(
         type=JSON,
-        shape=['*'],
+        shape=["*"],
         description="""
         Reduced proportion of materials details.
         """,
@@ -41,7 +41,7 @@ class MaterialProperties(ArchiveSection):
 
     elements_ratios = Quantity(
         type=np.float64,
-        shape=['*'],
+        shape=["*"],
         description="""
         Ratio of constituent elements (each element is a number between 0 and 1).
         """,
@@ -57,18 +57,11 @@ class MaterialProperties(ArchiveSection):
         """,
     )
 
-    test_metadata_field = Quantity(
-        type=str,
-        description="""
-        Test metadata field. Quantity to be removed in the future.
-        """,
-    )
-
 
 class ORCID(ArchiveSection):
     orcid_id = Quantity(
         type=JSON,
-        shape=['*'],
+        shape=["*"],
         description="""
         Dictionary containing the ORCID IDs of the author (keys) and uploader (values) profiles.
         """,
