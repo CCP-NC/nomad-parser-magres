@@ -219,6 +219,7 @@ class ElectricFieldGradient(PhysicalProperty):
     ) -> None:
         super().__init__(m_def, m_context, **kwargs)
         self.rank = [3, 3]  # ! move this to definitions
+        self.name = self.m_def.name
 
     def resolve_quadrupolar_coupling_constant(self, logger: 'BoundLogger') -> None:
         pass
