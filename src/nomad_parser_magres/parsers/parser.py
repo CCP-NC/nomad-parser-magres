@@ -460,7 +460,8 @@ class MagresParser(MatchingParser):
                 logger.warning(
                     'The shape of the matched text from the magres file for the `efg` does not coincide with the number of atoms.'
                 )
-                return []
+                # return []
+                continue  # Log a warning and continue processing the remaining tags
 
             # Parse electronic field gradients for each contribution and their refs to the specific `AtomsState`
             for i, atom_data in enumerate(data):
