@@ -24,6 +24,10 @@ from nomad_simulations.schema_packages.model_method import (
 )
 from nomad_simulations.schema_packages.model_system import AtomicCell, ModelSystem
 from nomad_simulations.schema_packages.numerical_settings import KMesh, KSpace
+from typing import Dict
+
+from nomad.datamodel import EntryArchive
+from nomad.parsing import MatchingParser
 
 # utility function used to get auxiliary files next to the `mainfile`
 from nomad_parser_magres.parsers.utils import get_files
@@ -180,7 +184,7 @@ class MagresFileParser(TextParser):
         ]
 
 
-class MagresParser:
+class MagresParser(MatchingParser):
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.magres_file_parser = MagresFileParser()
@@ -667,7 +671,7 @@ class MagresParser:
         self.archive.workflow2 = workflow
 
     def parse(
-        self, filepath: str, archive: 'EntryArchive', logger: 'BoundLogger'
+        self, filepath: str, archive: 'EntryArchive', logger: 'BoundLogger', child_archives: Dict[str, EntryArchive] = None,
     ) -> None:
         self.mainfile = filepath
         self.maindir = os.path.dirname(self.mainfile)
