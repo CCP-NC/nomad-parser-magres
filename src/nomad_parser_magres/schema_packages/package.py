@@ -156,7 +156,10 @@ class MagneticShieldingTensor(PhysicalProperty):
         # `MagneticShieldingIsotropic` extraction
         isotropic = self.extract_isotropic_part(logger)
         if isotropic is not None:
+            logger.info(f'Appending isotropic value for {self.name}')
             self.m_parent.magnetic_shieldings_isotropic.append(isotropic)
+        else:
+            logger.warning(f'Isotropic value extraction failed for {self.name}')
 
 
 class ElectricFieldGradient(PhysicalProperty):
