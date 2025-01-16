@@ -35,6 +35,7 @@ from nomad_parser_magres.schema_packages.ccpnc_metadata import CCPNCMetadata
 from nomad_parser_magres.schema_packages.package import CCPNCSimulation as Simulation
 from nomad_parser_magres.schema_packages.package import (
     ElectricFieldGradient,
+    ElectricFieldGradients,
     MagneticShieldingTensor,
     MagneticSusceptibility,
     Outputs,
@@ -434,7 +435,7 @@ class MagresParser(MatchingParser):
 
     def parse_electric_field_gradients(
         self, magres_data: TextParser, cell: "Cell", logger: "BoundLogger"
-    ) -> list[ElectricFieldGradient]:
+    ) -> ElectricFieldGradients:
         """
         Parse the electric field gradients from the magres file and assign `entity_ref` to the specific `AtomsState`.
 
@@ -444,7 +445,7 @@ class MagresParser(MatchingParser):
             logger (BoundLogger): The logger to log messages.
 
         Returns:
-            list[ElectricFieldGradient]: The list of parsed `ElectricFieldGradient` sections.
+            ElectricFieldGradients: The parsed `ElectricFieldGradients` section.
         """
         n_atoms = len(cell.atoms_state)
         efg_contributions = {
@@ -452,7 +453,8 @@ class MagresParser(MatchingParser):
             "efg_nonlocal": "non_local",
             "efg": "total",
         }
-        electric_field_gradients = []
+        # electric_field_gradients = []
+        electric_field_gradients = ElectricFieldGradients()
         for tag, contribution in efg_contributions.items():
             data = magres_data.get(tag, [])
 
@@ -472,7 +474,13 @@ class MagresParser(MatchingParser):
                     type=contribution, entity_ref=cell.atoms_state[i]
                 )
                 sec_efg.value = values * 9.717362e21 * ureg("V/m^2")
-                electric_field_gradients.append(sec_efg)
+                # electric_field_gradients.append(sec_efg)
+                if contribution == "total":
+                    electric_field_gradients.efg_total.append(sec_efg)
+                elif contribution == "local":
+                    electric_field_gradients.efg_local.append(sec_efg)
+                elif contribution == "non_local":
+                    electric_field_gradients.efg_nonlocal.append(sec_efg)
         return electric_field_gradients
 
     def parse_spin_spin_couplings(
@@ -601,8 +609,12 @@ class MagresParser(MatchingParser):
         efg = self.parse_electric_field_gradients(
             magres_data=magres_data, cell=cell, logger=logger
         )
-        if len(efg) > 0:
-            outputs.electric_field_gradients = efg
+        if (
+            len(efg.efg_total) > 0
+            or len(efg.efg_local) > 0
+            or len(efg.efg_nonlocal) > 0
+        ):
+            outputs.electric_field_gradients.append(efg)
 
         # Parse `SpinSpinCoupling`
         isc = self.parse_spin_spin_couplings(
