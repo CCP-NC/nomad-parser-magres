@@ -614,6 +614,8 @@ class MagresParser(MatchingParser):
             or len(efg.efg_local) > 0
             or len(efg.efg_nonlocal) > 0
         ):
+            efg.model_system_ref = simulation.model_system[-1]
+            efg.model_method_ref = simulation.model_method[-1]
             outputs.electric_field_gradients.append(efg)
 
         # Parse `SpinSpinCoupling`
