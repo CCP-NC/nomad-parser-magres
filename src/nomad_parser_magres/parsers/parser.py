@@ -780,6 +780,8 @@ class MagresParser(MatchingParser):
         ccpnc_metadata = self.parse_json_file(filepath=self.mainfile, logger=logger)
         if ccpnc_metadata:
             simulation.ccpnc_metadata = ccpnc_metadata
+
+        archive.data = simulation
         # ! this will only work after the CASTEP and QE plugin parsers are defined
         # Try to resolve the `entry_id` and `mainfile` of other entries in the upload to connect the magres entry with the CASTEP or QuantumESPRESSO entry
         filepath_stripped = self.mainfile.split("raw/")[-1]
