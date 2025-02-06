@@ -47,28 +47,10 @@ class MaterialProperties(ArchiveSection):
         """,
     )
 
-    # Note from @JosePizarro3: in the `nomad_simulations` schema we have a sub-section under `archive.data.model_system[*].chemical_formula`
-    # where we compiled a bunch of different formats. There, `chemical_formula.descriptive` is selected depending on the
-    # specific case (in organic and inorganic chemistry, the descriptive formula is different).
-    chemical_formula_descriptive = Quantity(
-        type=str,
-        description="""
-        Formula as a string, e.g., 'C2H6O'.
-        """,
-    )
-
-    test_metadata_field = Quantity(
-        type=str,
-        description="""
-        Test metadata field. Quantity to be removed in the future.
-        """,
-    )
-
 
 class ORCID(ArchiveSection):
     orcid_id = Quantity(
-        type=JSON,
-        shape=['*'],
+        type=str,
         description="""
         Dictionary containing the ORCID IDs of the author (keys) and uploader (values) profiles.
         """,
