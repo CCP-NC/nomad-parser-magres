@@ -1,3 +1,4 @@
+import json
 import os
 from typing import TYPE_CHECKING, Optional
 
@@ -31,7 +32,14 @@ from nomad_simulations.schema_packages.numerical_settings import KMesh, KSpace
 
 # utility function used to get auxiliary files next to the `mainfile`
 from nomad_parser_magres.parsers.utils import get_files
-from nomad_parser_magres.schema_packages.ccpnc_metadata import CCPNCMetadata
+from nomad_parser_magres.schema_packages.ccpnc_metadata import (
+    ORCID,
+    CCPNCMetadata,
+    CCPNCRecord,
+    ExternalDatabaseReference,
+    FreeTextMetadata,
+    MaterialProperties,
+)
 from nomad_parser_magres.schema_packages.package import CCPNCSimulation as Simulation
 from nomad_parser_magres.schema_packages.package import (
     ElectricFieldGradient,
@@ -687,6 +695,44 @@ class MagresParser(MatchingParser):
 
         self.archive.workflow2 = workflow
 
+    def parse_json_file(self, filepath: str, logger: "BoundLogger") -> Optional[CCPNCMetadata]:
+        """Parse the JSON file and extract relevant information."""
+        magres_json_file = get_files(
+            pattern="MRD*.json", filepath=filepath, stripname=self.basename
+        )
+        if not magres_json_file:
+            logger.warning("No JSON file found.")
+            return None
+        with open(magres_json_file[0]) as f:
+            magres_json_data = json.load(f)
+        ccpnc_metadata = CCPNCMetadata()
+        material_properties = MaterialProperties()
+        orcid = ORCID()
+        ccpnc_record = CCPNCRecord()
+        external_database_reference = ExternalDatabaseReference()
+        free_text_metadata = FreeTextMetadata()
+
+        material_properties.chemical_name = magres_json_data.get("chemname", "")
+        material_properties.formula = magres_json_data.get("formula", "")
+        material_properties.stoichiometry = magres_json_data.get("stochiometry", "")
+        material_properties.elements_ratios = magres_json_data.get("elements_ratios", "")
+        # material_properties.chemical_name_tokens =
+        orcid.orcid_id = magres_json_data.get("ORCID", "")
+        # ccpnc_record.visible =
+        ccpnc_record.immutable_id = magres_json_data.get("immutable_id", "")
+        version_metadata = magres_json_data.get("version_metadata", {})
+        external_database_reference.external_database_name = version_metadata.get("extref_type", "")
+        external_database_reference.external_database_reference_code = version_metadata.get("extref_code", "")
+        free_text_metadata.uploader_author_notes = version_metadata.get("notes", "")
+        free_text_metadata.structural_descriptor_notes = version_metadata.get("chemform", "")
+
+        ccpnc_metadata.material_properties = material_properties
+        ccpnc_metadata.orcid = orcid
+        ccpnc_metadata.ccpnc_record = ccpnc_record
+        ccpnc_metadata.external_database_reference = external_database_reference
+        ccpnc_metadata.free_text_metadata = free_text_metadata
+        return ccpnc_metadata
+
     def parse(
         self,
         filepath: str,
@@ -730,6 +776,10 @@ class MagresParser(MatchingParser):
         if outputs is not None:
             simulation.outputs.append(outputs)
 
+        # Parse JSON file and extract metadata
+        ccpnc_metadata = self.parse_json_file(filepath=self.mainfile, logger=logger)
+        if ccpnc_metadata:
+            simulation.ccpnc_metadata = ccpnc_metadata
         # ! this will only work after the CASTEP and QE plugin parsers are defined
         # Try to resolve the `entry_id` and `mainfile` of other entries in the upload to connect the magres entry with the CASTEP or QuantumESPRESSO entry
         filepath_stripped = self.mainfile.split("raw/")[-1]
