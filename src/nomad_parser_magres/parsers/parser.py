@@ -180,26 +180,26 @@ class MagresFileParser(TextParser):
 
 
 class MagresParser(MatchingParser):
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        self.magres_file_parser = MagresFileParser()
+    # def __init__(self, *args, **kwargs):
+    #     super().__init__()
+    magres_file_parser = MagresFileParser()
 
-        self._xc_functional_map = {
-            'LDA': ['LDA_C_PZ', 'LDA_X_PZ'],
-            'PW91': ['GGA_C_PW91', 'GGA_X_PW91'],
-            'PBE': ['GGA_C_PBE', 'GGA_X_PBE'],
-            'RPBE': ['GGA_X_RPBE'],
-            'WC': ['GGA_C_PBE_GGA_X_WC'],
-            'PBESOL': ['GGA_X_RPBE'],
-            'BLYP': ['GGA_C_LYP', 'LDA_X_B88'],
-            'B3LYP': ['HYB_GGA_XC_B3LYP5'],
-            'HF': ['HF_X'],
-            'HF-LDA': ['HF_X_LDA_C_PW'],
-            'PBE0': ['HYB_GGA_XC_PBEH'],
-            'HSE03': ['HYB_GGA_XC_HSE03'],
-            'HSE06': ['HYB_GGA_XC_HSE06'],
-            'RSCAN': ['MGGA_X_RSCAN', 'MGGA_C_RSCAN'],
-        }
+    _xc_functional_map = {
+        'LDA': ['LDA_C_PZ', 'LDA_X_PZ'],
+        'PW91': ['GGA_C_PW91', 'GGA_X_PW91'],
+        'PBE': ['GGA_C_PBE', 'GGA_X_PBE'],
+        'RPBE': ['GGA_X_RPBE'],
+        'WC': ['GGA_C_PBE_GGA_X_WC'],
+        'PBESOL': ['GGA_X_RPBE'],
+        'BLYP': ['GGA_C_LYP', 'LDA_X_B88'],
+        'B3LYP': ['HYB_GGA_XC_B3LYP5'],
+        'HF': ['HF_X'],
+        'HF-LDA': ['HF_X_LDA_C_PW'],
+        'PBE0': ['HYB_GGA_XC_PBEH'],
+        'HSE03': ['HYB_GGA_XC_HSE03'],
+        'HSE06': ['HYB_GGA_XC_HSE06'],
+        'RSCAN': ['MGGA_X_RSCAN', 'MGGA_C_RSCAN'],
+    }
 
     def _check_units_magres(self, logger: 'BoundLogger') -> None:
         """
