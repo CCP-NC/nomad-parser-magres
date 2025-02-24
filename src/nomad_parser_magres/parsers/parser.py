@@ -8,11 +8,10 @@ if TYPE_CHECKING:
     from nomad_simulations.schema_packages.model_system import Cell
     from structlog.stdlib import BoundLogger
 
-from nomad.app.v1.models.models import MetadataRequired
+from nomad.parsing import MatchingParser
 from nomad.config import config
 from nomad.datamodel.metainfo.workflow import Link, TaskReference
 from nomad.parsing.file_parser import Quantity, TextParser
-from nomad.search import search
 from nomad.units import ureg
 from nomad.utils import extract_section
 from nomad_simulations.schema_packages.atoms_state import AtomsState
@@ -180,7 +179,7 @@ class MagresFileParser(TextParser):
         ]
 
 
-class MagresParser:
+class MagresParser(MatchingParser):
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.magres_file_parser = MagresFileParser()
@@ -710,6 +709,8 @@ class MagresParser:
         filepath_stripped = self.mainfile.split('raw/')[-1]
         metadata = []
         try:
+            from nomad.search import search
+            from nomad.app.v1.models.models import MetadataRequired
             upload_id = self.archive.metadata.upload_id
             search_ids = search(
                 owner='visible',
